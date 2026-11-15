@@ -54,10 +54,10 @@ def load_overrides(models_dir: Path) -> dict[str, dict]:
 
 
 def file_status(size: int, settings: Settings) -> tuple[str, str | None]:
-    cap = int(settings.max_model_file_gb * 1024**3)
+    cap = int(settings.max_model_file_gb * 1e9)  # decimal GB, same as the admin UI
     if size > cap:
         return "too_large", (
-            f"File is {size / 1024**3:.2f} GB, above the {settings.max_model_file_gb} GB cap "
+            f"File is {size / 1e9:.2f} GB, above the {settings.max_model_file_gb} GB cap "
             f"(≈{settings.max_param_hint_b:g}B parameters at w8a8)"
         )
     return "ok", None

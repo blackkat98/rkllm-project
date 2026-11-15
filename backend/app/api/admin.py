@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 
 from app.api.state import WorkerDep
 from app.auth.deps import AdminUser, SessionDep
@@ -7,7 +7,7 @@ from app.auth.security import hash_password
 from app.config import get_settings
 from app.engine.registry import estimate_ram_mb, scan_models, to_spec
 from app.engine.worker import PRIORITY_BACKGROUND, Job
-from app.models import AppSettings, LLMModel, User
+from app.models import AppSettings, Conversation, LLMModel, Message, User
 from app.schemas import (
     AdminUserCreate,
     AdminUserUpdate,
@@ -191,6 +191,40 @@ async def reset_model_status(model_id: int, _: AdminUser, session: SessionDep, w
     await session.refresh(m)
     st = await session.get(AppSettings, 1)
     return _model_admin(m, st.default_model_id if st else None, worker.loaded_model_id)
+
+
+@router.delete("/models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_model(model_id: int, _: AdminUser, session: SessionDep):
+    """Removes the entry of a model whose file is gone from the models folder.
+
+    Old chats and messages keep their text; only their link to this model is cleared
+    (they then fall back to the default model). Models whose file still exists can't be
+    removed here: delete the file, rescan, then remove it.
+    """
+    m = await session.get(LLMModel, model_id)
+    if not m:
+        raise HTTPException(404, "Model not found")
+    if m.status != "missing":
+        raise HTTPException(409, "Only models whose file is missing can be removed. Delete the file and rescan first.")
+    # explicit, so it also works on databases that don't enforce ON DELETE SET NULL (SQLite in tests)
+    await session.execute(update(Conversation).where(Conversation.model_id == m.id).values(model_id=None))
+    await session.execute(update(Message).where(Message.model_id == m.id).values(model_id=None))
+    await session.execute(update(AppSettings).where(AppSettings.default_model_id == m.id).values(default_model_id=None))
+    await session.execute(delete(LLMModel).where(LLMModel.id == m.id))
+    await session.commit()
+
+
+@router.delete("/models", status_code=status.HTTP_200_OK)
+async def remove_missing_models(_: AdminUser, session: SessionDep):
+    """Removes every model entry whose file is gone. Returns how many were removed."""
+    ids = (await session.execute(select(LLMModel.id).where(LLMModel.status == "missing"))).scalars().all()
+    if ids:
+        await session.execute(update(Conversation).where(Conversation.model_id.in_(ids)).values(model_id=None))
+        await session.execute(update(Message).where(Message.model_id.in_(ids)).values(model_id=None))
+        await session.execute(update(AppSettings).where(AppSettings.default_model_id.in_(ids)).values(default_model_id=None))
+        await session.execute(delete(LLMModel).where(LLMModel.id.in_(ids)))
+        await session.commit()
+    return {"removed": len(ids)}
 
 
 @router.post("/engine/unload")

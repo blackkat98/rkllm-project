@@ -95,7 +95,35 @@ async function saveEdit() {
 
 const statusColor = (s: string) => ({ ok: 'success', missing: 'neutral', too_large: 'error', over_ram: 'error' } as const)[s as 'ok'] ?? 'neutral'
 const statusLabel = (s: string) => ({ ok: 'OK', missing: 'Missing', too_large: 'Too large', over_ram: 'Over RAM limit' } as Record<string, string>)[s] ?? s
-const gb = (b: number) => `${(b / 1024 ** 3).toFixed(2)} GB`
+const gb = (b: number) => `${(b / 1e9).toFixed(2)} GB`
+
+// entries whose .rkllm file was deleted from the models folder
+const missingCount = computed(() => items.value.filter(m => m.status === 'missing').length)
+const removing = ref<number | 'all' | null>(null)
+async function removeModel(m: ModelAdmin) {
+  removing.value = m.id
+  try {
+    await api(`/api/admin/models/${m.id}`, { method: 'DELETE' })
+    items.value = items.value.filter(o => o.id !== m.id)
+    toast.add({ title: `Removed ${m.display_name}`, color: 'success' })
+  } catch (e) {
+    toast.add({ title: 'Could not remove', description: errorMessage(e), color: 'error' })
+  } finally {
+    removing.value = null
+  }
+}
+async function removeAllMissing() {
+  removing.value = 'all'
+  try {
+    const r = await api<{ removed: number }>('/api/admin/models', { method: 'DELETE' })
+    items.value = items.value.filter(o => o.status !== 'missing')
+    toast.add({ title: `Removed ${r.removed} missing model${r.removed === 1 ? '' : 's'}`, color: 'success' })
+  } catch (e) {
+    toast.add({ title: 'Could not remove', description: errorMessage(e), color: 'error' })
+  } finally {
+    removing.value = null
+  }
+}
 
 onMounted(load)
 </script>
@@ -114,6 +142,15 @@ onMounted(load)
         </p>
       </div>
       <UButton icon="i-lucide-power" color="neutral" variant="outline" label="Unload" :disabled="!engine?.loaded_model_id" @click="unload" />
+      <UButton
+        v-if="missingCount > 1"
+        icon="i-lucide-trash-2"
+        color="neutral"
+        variant="outline"
+        :label="`Remove ${missingCount} missing`"
+        :loading="removing === 'all'"
+        @click="removeAllMissing"
+      />
       <UButton icon="i-lucide-folder-sync" color="neutral" label="Rescan folder" :loading="scanning" @click="rescan" />
     </div>
 
@@ -157,7 +194,10 @@ onMounted(load)
           </p>
         </div>
 
-        <div class="flex items-center gap-4">
+        <div v-if="m.status === 'missing'" class="flex items-center">
+          <UButton icon="i-lucide-trash-2" color="neutral" variant="outline" label="Remove from list" :loading="removing === m.id" @click="removeModel(m)" />
+        </div>
+        <div v-else class="flex items-center gap-4">
           <USwitch :model-value="m.enabled" label="Enabled" :disabled="m.status !== 'ok'" @update:model-value="(v) => patch(m, { enabled: v })" />
           <UTooltip text="Preload at startup and never unload when idle (only one model)">
             <USwitch :model-value="m.keep_loaded" label="Keep loaded" :disabled="!m.enabled" @update:model-value="(v) => patch(m, { keep_loaded: v })" />

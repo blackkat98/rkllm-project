@@ -142,3 +142,41 @@ async def test_openai_compat_with_api_key(make_client, admin, enabled_model):
     assert r.text.strip().endswith("data: [DONE]")
     bad = await anon.get("/v1/models", headers={"Authorization": "Bearer rk-wrong"})
     assert bad.status_code == 401
+
+
+async def test_remove_missing_models(make_client, admin, enabled_model):
+    from tests.conftest import MODELS
+
+    files = [MODELS / f"llama-3.2-1b-gone-{i}.rkllm" for i in range(3)]
+    for f in files:
+        f.write_bytes(b"\0" * 512)
+    await admin.post("/api/admin/models/rescan")
+    models = {m["filename"]: m for m in (await admin.get("/api/admin/models")).json()}
+    gone = [models[f.name] for f in files]
+    assert (await admin.patch(f"/api/admin/models/{gone[0]['id']}", json={"enabled": True})).status_code == 200
+    conv = (await admin.post("/api/conversations", json={"model_id": gone[0]["id"]})).json()
+    assert conv["model_id"] == gone[0]["id"]
+
+    # a model whose file still exists can't be removed
+    assert (await admin.delete(f"/api/admin/models/{gone[0]['id']}")).status_code == 409
+    # nor by a normal user
+    await admin.post("/api/admin/users", json={"username": "carol", "email": "carol@example.com", "password": "carol-password"})
+    carol = await make_client("carol", "carol-password")
+    assert (await carol.delete(f"/api/admin/models/{gone[0]['id']}")).status_code == 403
+
+    for f in files:
+        f.unlink()
+    r = (await admin.post("/api/admin/models/rescan")).json()
+    assert r["missing"] >= 3
+    statuses = {m["id"]: m["status"] for m in (await admin.get("/api/admin/models")).json()}
+    assert all(statuses[m["id"]] == "missing" for m in gone)
+
+    # remove one, then the rest in bulk
+    assert (await admin.delete(f"/api/admin/models/{gone[0]['id']}")).status_code == 204
+    assert (await admin.delete(f"/api/admin/models/{gone[0]['id']}")).status_code == 404
+    assert (await admin.get(f"/api/conversations/{conv['id']}")).json()["model_id"] is None
+    r = await admin.delete("/api/admin/models")
+    assert r.status_code == 200 and r.json()["removed"] == 2
+    left = (await admin.get("/api/admin/models")).json()
+    assert not [m for m in left if m["status"] == "missing"]
+    assert any(m["id"] == enabled_model["id"] for m in left)  # existing models untouched
