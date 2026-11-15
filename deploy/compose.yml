@@ -67,9 +67,10 @@ services:
       - "${BACKEND_PORT:-8000}"
 
   # Serves the SPA on WEB_PORT and proxies /api + /v1 to the backend.
-  # Follows the Pi's convention (see ~/prj/caddy): no host ports are published; the
-  # shared Caddy reaches this container as "rkllm-web:${WEB_PORT}" over the external
-  # "proxy" network. Snippet for that Caddyfile: deploy/Caddyfile.host
+  # Follows the Pi's convention (like n8n / nam-nuxt-room): bound to 127.0.0.1 only, so the
+  # Cloudflare tunnel (localhost:${WEB_PORT}) can reach it but the LAN can't; the shared Caddy
+  # also reaches it as "rkllm-web:${WEB_PORT}" over the external "proxy" network
+  # (block: deploy/Caddyfile.host). Never 80/443.
   rkllm-web:
     build: ../frontend
     image: rkllm-chat-web:latest
@@ -80,14 +81,11 @@ services:
       WEB_PORT: ${WEB_PORT:-8090}
       BACKEND_HOST: backend
       BACKEND_PORT: ${BACKEND_PORT:-8000}
-    expose:
-      - "${WEB_PORT:-8090}"
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8090}:${WEB_PORT:-8090}"
     networks:
       - default
       - proxy
-    # Optional, for testing from the Pi itself without going through Caddy:
-    # ports:
-    #   - "127.0.0.1:${WEB_PORT:-8090}:${WEB_PORT:-8090}"
 
 volumes:
   pgdata:

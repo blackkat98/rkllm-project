@@ -98,16 +98,20 @@ cd deploy && docker compose up -d --build
 docker compose logs -f backend                   # expect "model scan: N added"
 ```
 
-The app publishes **no host ports and never uses port 80**. It follows the Pi's existing setup
-(`~/prj/caddy`): one shared Caddy owns port 80, the Cloudflare tunnel sends every hostname to it, and apps
-join the external `proxy` network. The web container is reachable there as `rkllm-web:${WEB_PORT}`
-(default 8090). The backend (`BACKEND_PORT`, default 8000) is only on the app's internal network.
+The app **never uses port 80 or 443**. It follows the Pi's existing setup (`~/prj/caddy`, same as n8n and
+nam-nuxt-room). The web container binds **`127.0.0.1:${WEB_PORT}`** (default 8090), so it's reachable from
+the Pi itself (the Cloudflare tunnel) but not from the LAN. It also joins the external `proxy` network,
+where the shared Caddy reaches it as `rkllm-web:${WEB_PORT}`. The backend (`BACKEND_PORT`, default 8000)
+is only on the app's internal network.
 
-1. **Caddy.** Add the block from `deploy/Caddyfile.host` to `~/prj/caddy/Caddyfile`, above the catch-all
-   `:80` block:
+1. **Cloudflare.** The tunnel is token-managed, so add the hostname in the dashboard:
+   Zero Trust → Networks → Tunnels → your tunnel → Public hostnames → `rkllm-chat.blackkat.bond` →
+   HTTP → `localhost:8090`.
+2. **Caddy.** Add the block from `deploy/Caddyfile.host` to `~/prj/caddy/Caddyfile`, above the catch-all
+   `:80` block, like the other sites:
 
    ```caddy
-   http://rkllm.blackkat.bond {
+   http://rkllm-chat.blackkat.bond {
    	reverse_proxy rkllm-web:8090 {
    		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
    		flush_interval -1          # required: stream tokens immediately
@@ -116,9 +120,6 @@ join the external `proxy` network. The web container is reachable there as `rkll
    ```
 
    Then reload it: `cd ~/prj/caddy && docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`
-2. **Cloudflare.** The tunnel is token-managed, so add the hostname in the dashboard:
-   Zero Trust → Networks → Tunnels → your tunnel → Public hostnames → `rkllm.blackkat.bond` →
-   HTTP → `localhost:80`.
 
 Keep `COOKIE_SECURE=true`, since Cloudflare serves the site over HTTPS. The app must sit at the root of a
 (sub)domain, not on a sub-path. If you change `WEB_PORT`, change it in the Caddy block too.
@@ -184,7 +185,7 @@ container starts.
 | `JWT_SECRET` | – | long random string |
 | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | – | first admin, created once |
 | `COOKIE_SECURE` | `true` in compose | Secure cookies (site served over HTTPS by Cloudflare) |
-| `BACKEND_PORT` / `WEB_PORT` | `8000` / `8090` | container ports; nothing is published on the Pi |
+| `BACKEND_PORT` / `WEB_PORT` | `8000` / `8090` | container ports; only `WEB_PORT` is published, on 127.0.0.1 |
 | `RKLLM_ENGINE` | `rkllm` | `mock` for development |
 | `MODELS_DIR` | `/models` | inside the container |
 | `MAX_MODEL_FILE_GB` / `MAX_MODEL_RAM_MB` | `2.8` / `3000` | ≤2B policy |

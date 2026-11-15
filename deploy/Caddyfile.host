@@ -1,14 +1,13 @@
-# Add this block to the shared Caddy on the Pi: /home/nam/prj/caddy/Caddyfile
+# Block for the shared Caddy on the Pi: /home/nam/prj/caddy/Caddyfile
 # (above the catch-all ":80" block), then reload it:
 #   cd ~/prj/caddy && docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 #
-# The Cloudflare tunnel terminates TLS and sends every hostname to http://localhost:80;
-# this Caddy picks the app by hostname. Also add the hostname in the Cloudflare dashboard:
-# Zero Trust → Networks → Tunnels → (this tunnel) → Public hostnames → add
-#   rkllm.blackkat.bond  →  HTTP  →  localhost:80
-# (pick any subdomain; keep it identical in both places)
+# Cloudflare Zero Trust → Networks → Tunnels → (this tunnel) → Public hostnames:
+#   rkllm-chat.blackkat.bond  →  HTTP  →  localhost:8090   (WEB_PORT, bound to 127.0.0.1)
+# The tunnel can also point at localhost:80 instead; this block then picks the app by hostname.
+# Never put the app itself on 80/443.
 
-http://rkllm.blackkat.bond {
+http://rkllm-chat.blackkat.bond {
 	reverse_proxy rkllm-web:8090 {
 		# Cloudflare's view of the visitor's IP (the login throttle uses it)
 		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
