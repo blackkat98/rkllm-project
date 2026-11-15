@@ -1,0 +1,24 @@
+# Copy to <MODELS_DIR>/models.yaml. Values pre-fill the admin settings the FIRST time a
+# file is scanned; afterwards edit them in Admin → Models. Keys are filenames relative
+# to the models folder. All fields are optional.
+models:
+  Qwen2.5-1.5B-Instruct-rk3588-w8a8.rkllm:
+    display_name: Qwen 2.5 · 1.5B
+    family: chatml          # chatml | deepseek | gemma | llama3 | llama2 | phi3
+    max_context_len: 4096   # must not exceed the value used when converting the model
+    max_new_tokens: 2048
+    sampling: { temperature: 0.7, top_p: 0.9, top_k: 20, repeat_penalty: 1.1 }
+    enabled: true
+    sort_order: 10
+
+  DeepSeek-R1-Distill-Qwen-1.5B_W8A8_RK3588.rkllm:
+    display_name: DeepSeek R1 · 1.5B (reasoning)
+    family: deepseek
+    sampling: { temperature: 0.6, top_p: 0.95 }
+    sort_order: 20
+
+  gemma-3-1b-it-rk3588-w8a8-opt-1-hybrid-ratio-0.0.rkllm:
+    display_name: Gemma 3 · 1B (fast)
+    family: gemma
+    sort_order: 30
+    # tokenizer: gemma-3-1b-it.tokenizer.json   # optional, relative to the models folder

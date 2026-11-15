@@ -1,0 +1,97 @@
+# Production stack for the Orange Pi 5+ (RK3588, arm64).
+#   cp .env.example .env   # then edit secrets
+#   docker compose up -d --build
+name: rkllm-chat
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rkllm
+      POSTGRES_USER: rkllm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    # keep Postgres small: the RAM is needed for the model
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rkllm -d rkllm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ../backend
+    image: rkllm-chat-backend:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rkllm:${POSTGRES_PASSWORD}@db:5432/rkllm
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}  # Cloudflare serves the site over HTTPS
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
+      APP_NAME: ${APP_NAME:-RKLLM Chat}
+      RKLLM_ENGINE: rkllm
+      MAX_MODEL_FILE_GB: ${MAX_MODEL_FILE_GB:-2.8}
+      MAX_MODEL_RAM_MB: ${MAX_MODEL_RAM_MB:-3000}
+      IDLE_UNLOAD_MINUTES: ${IDLE_UNLOAD_MINUTES:-0}
+      KV_FAST_PATH: ${KV_FAST_PATH:-true}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+    volumes:
+      # model files stay on the host, read-only; never baked into the image
+      - ${MODELS_DIR:-../backend/models}:/models:ro
+    # --- NPU access -------------------------------------------------------------
+    # The RK3588 NPU (rknpu driver >= 0.9.8) is exposed through the DRM render nodes,
+    # and the runtime allocates buffers from the DMA heaps.
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/dma_heap:/dev/dma_heap
+    # Docker masks /sys/firmware and parts of /proc by default; the runtime may read the
+    # device tree to identify the SoC. This unmasks those paths without full privileges.
+    security_opt:
+      - systempaths=unconfined
+    # Fallback if init still fails on your kernel (e.g. "failed to open rknpu module"):
+    # comment out `devices` + `security_opt` above and enable:
+    # privileged: true
+    # ------------------------------------------------------------------------------
+    ulimits:
+      nofile:
+        soft: 102400
+        hard: 102400
+    expose:
+      - "${BACKEND_PORT:-8000}"
+
+  # Serves the SPA on WEB_PORT and proxies /api + /v1 to the backend.
+  # Follows the Pi's convention (see ~/prj/caddy): no host ports are published; the
+  # shared Caddy reaches this container as "rkllm-web:${WEB_PORT}" over the external
+  # "proxy" network. Snippet for that Caddyfile: deploy/Caddyfile.host
+  rkllm-web:
+    build: ../frontend
+    image: rkllm-chat-web:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      WEB_PORT: ${WEB_PORT:-8090}
+      BACKEND_HOST: backend
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+    expose:
+      - "${WEB_PORT:-8090}"
+    networks:
+      - default
+      - proxy
+    # Optional, for testing from the Pi itself without going through Caddy:
+    # ports:
+    #   - "127.0.0.1:${WEB_PORT:-8090}:${WEB_PORT:-8090}"
+
+volumes:
+  pgdata:
+
+networks:
+  proxy:
+    external: true  # created once on the Pi: docker network create proxy

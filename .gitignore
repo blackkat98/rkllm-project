@@ -1,0 +1,46 @@
+# python
+__pycache__/
+*.py[oc]
+.venv/
+.pytest_cache/
+
+# node / nuxt
+node_modules/
+.nuxt/
+.output/
+.data/
+dist/
+
+# env & secrets
+.env
+deploy/.env
+
+# models (large files): keep the folder
+backend/models/*
+!backend/models/.keep
+!backend/models/README.md
+
+# real .rkllm files dropped anywhere else (only the tiny mock placeholders are tracked)
+*.rkllm
+!deploy/dev-models/*.rkllm
+
+# env variants (keep the example)
+.env.*
+!.env.example
+
+# image tarballs from "Building from Windows" (docker save | gzip)
+*.tar
+*.tar.gz
+
+# more python tool caches
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# editors / OS / logs
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,17 @@
+# Pins NPU/CPU/GPU/DDR to max frequency at boot (from rkllm_api_bundle/fix_freq_rk3588.sh).
+# The original server ran this with `sudo` on every start; in Docker it belongs on the host.
+#
+#   sudo cp deploy/fix_freq_rk3588.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/fix_freq_rk3588.sh
+#   sudo cp deploy/rkllm-freq.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now rkllm-freq
+[Unit]
+Description=Pin RK3588 NPU/CPU/DDR frequencies for RKLLM
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/local/bin/fix_freq_rk3588.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
