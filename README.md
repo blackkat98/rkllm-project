@@ -55,25 +55,41 @@ A model itself has no memory, so the backend provides it in three tiers:
    a title, a regenerate) clears the cache and the next turn falls back to tier 1, which is slower to
    start but gives the same result.
 
-## Models: ≤2B parameters on the 8 GB board
+## Models: ≤4B parameters on the 8 GB board
 
-The NPU uses system RAM, and w8a8 needs about 1 GB per 1B parameters. **Only one model is resident at a
+The NPU uses system RAM, and w8a8 (the only RK3588 format, there's no w4a16) needs about 1.1–1.3 GB per
+1B parameters, plus the KV cache. A 4B model needs roughly 5–6 GB in total. **Only one model is resident at a
 time**: switching models unloads the old one first, which takes a few seconds.
 
-The `.rkllm` format can't report its parameter count, so the 2B limit is enforced with measurable proxies:
+The `.rkllm` format can't report its parameter count, so the 4B limit is enforced with measurable proxies:
 
-1. **File size cap** (`MAX_MODEL_FILE_GB=2.8`): larger files are marked *Too large* and can't be enabled.
-2. **Filename hint** (e.g. `1.5B`): shown to admins, with a warning above 2B, but never decisive.
-3. **Measured RAM on first load** (`MAX_MODEL_RAM_MB=3000`): over the limit, the model is unloaded,
+1. **File size cap** (`MAX_MODEL_FILE_GB=5.5`): larger files are marked *Too large* and can't be enabled.
+2. **Filename hint** (e.g. `1.5B`, `4B`): shown to admins, with a warning above 4B (`max_param_hint_b`), but
+   never decisive.
+3. **Measured RAM on first load** (`MAX_MODEL_RAM_MB=6000`): over the limit, the model is unloaded,
    disabled, and flagged.
+4. **Free-RAM check before loading** (`min_free_ram_mb=512` in `backend/app/config.py`): if the RAM that's free after unloading the
+   current model is below the model's estimate plus this headroom, the load fails with a clear message
+   instead of the kernel killing the backend. This is temporary: the model stays enabled. Admin → Models
+   also warns when a model may not fit with the memory free right now.
 
 Models are listed by scanning the folder (at startup and with **Admin → Models → Rescan**), saved in
 the database, and **start disabled** until an admin enables them. An optional `models.yaml` in the models
 folder pre-fills names, templates and sampling (see `deploy/models.example.yaml`).
 
-Good choices: Qwen2.5 1.5B Instruct, Qwen3 1.7B, DeepSeek-R1-Distill-Qwen 1.5B, Gemma 3 1B, Llama 3.2 1B.
+Good choices: Qwen2.5 1.5B Instruct, Qwen3 1.7B, DeepSeek-R1-Distill-Qwen 1.5B, Gemma 3 1B, Llama 3.2 1B,
+and for 3–4B: Qwen3 4B, Qwen2.5 3B Instruct, Llama 3.2 3B, Phi-3.5-mini (3.8B), Gemma 3 4B (text only).
 They must be converted for **RK3588 with toolkit/runtime 1.2.0**, e.g. from
 <https://huggingface.co/thanhtantran>.
+
+Notes for 3–4B models:
+
+- Expect roughly 3–6 tokens/s, against 10–15 for a 1.5B model, and a longer first load.
+- Keep `max_context_len` at 4096 or less, and never above the context the model was converted with.
+- Keep the other services on the Pi small. Set `IDLE_UNLOAD_MINUTES` if the RAM is needed elsewhere.
+- After raising the limits, a model that was flagged *Over RAM limit* earlier needs
+  **Admin → Models → Reset status**. *Too large* models are re-checked at startup and on **Rescan**.
+- Values in `deploy/.env` override the defaults. Update `MAX_MODEL_FILE_GB` / `MAX_MODEL_RAM_MB` there too.
 
 > Sampling settings (temperature, top-p, …) are applied when the model loads (RKLLM sets them at init).
 > Changing them in Admin reloads the model on its next use.
@@ -188,7 +204,7 @@ container starts.
 | `BACKEND_PORT` / `WEB_PORT` | `8000` / `8090` | container ports; only `WEB_PORT` is published, on 127.0.0.1 |
 | `RKLLM_ENGINE` | `rkllm` | `mock` for development |
 | `MODELS_DIR` | `/models` | inside the container |
-| `MAX_MODEL_FILE_GB` / `MAX_MODEL_RAM_MB` | `2.8` / `3000` | ≤2B policy |
+| `MAX_MODEL_FILE_GB` / `MAX_MODEL_RAM_MB` | `5.5` / `6000` | ≤4B policy |
 | `IDLE_UNLOAD_MINUTES` | `0` | free RAM when idle |
 | `KV_FAST_PATH` | `true` | memory tier 3 |
 | `SUMMARY_TRIGGER_RATIO` / `KEEP_RECENT_MESSAGES` | `0.70` / `6` | memory tier 2 |

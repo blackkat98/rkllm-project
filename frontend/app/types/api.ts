@@ -45,6 +45,13 @@ export interface ModelAdmin {
   warnings: string[]
 }
 
+export interface ModelPolicy {
+  max_param_b: number
+  max_file_gb: number
+  max_ram_mb: number
+  min_free_ram_mb: number
+}
+
 export interface Conversation {
   id: string
   title: string

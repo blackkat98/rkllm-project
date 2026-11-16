@@ -36,6 +36,7 @@ class ModelSpec:
     max_new_tokens: int
     sampling: dict = field(default_factory=dict)
     keep_loaded: bool = False
+    est_ram_mb: int | None = None  # pre-load estimate, used by the free-RAM check
 
     def load_params(self, cpu_mask: int, cpu_num: int) -> LoadParams:
         return LoadParams.from_sampling(
@@ -122,7 +123,8 @@ class EngineWorker:
         *,
         cpu_mask: int = 0,
         cpu_num: int = 4,
-        max_model_ram_mb: int = 3000,
+        max_model_ram_mb: int = 6000,
+        min_free_ram_mb: int = 512,
         idle_unload_minutes: int = 0,
         kv_fast_path: bool = True,
     ):
@@ -130,6 +132,7 @@ class EngineWorker:
         self.cpu_mask = cpu_mask
         self.cpu_num = cpu_num
         self.max_model_ram_mb = max_model_ram_mb
+        self.min_free_ram_mb = min_free_ram_mb
         self.idle_unload_minutes = idle_unload_minutes
         self.kv_fast_path = kv_fast_path
 
@@ -302,6 +305,17 @@ class EngineWorker:
         # always free the previous model first: two models never fit in 8 GB
         self._unload()
         avail_before, rss_before = _meminfo_available_mb(), _rss_mb()
+        # a 4B model needs ~5-6 GB: fail cleanly instead of getting OOM-killed. Not sticky:
+        # free memory depends on what else runs on the board, so the model stays enabled.
+        if avail_before is not None and spec.est_ram_mb \
+                and avail_before < spec.est_ram_mb + self.min_free_ram_mb:
+            job.emit(
+                "error",
+                message=f"Not enough free RAM to load {spec.display_name}: ~{spec.est_ram_mb} MB needed "
+                f"(+{self.min_free_ram_mb} MB headroom), {avail_before} MB available. Free memory "
+                "(stop other services or lower the context length) and try again.",
+            )
+            return False
         try:
             self.backend.load(spec.load_params(self.cpu_mask, self.cpu_num))
         except Exception as e:
