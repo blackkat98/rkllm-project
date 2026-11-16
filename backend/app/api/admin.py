@@ -6,7 +6,7 @@ from app.auth.deps import AdminUser, SessionDep
 from app.auth.security import hash_password
 from app.config import get_settings
 from app.engine.registry import estimate_ram_mb, scan_models, to_spec
-from app.engine.worker import PRIORITY_BACKGROUND, Job
+from app.engine.worker import PRIORITY_BACKGROUND, Job, _meminfo_available_mb
 from app.models import AppSettings, Conversation, LLMModel, Message, User
 from app.schemas import (
     AdminUserCreate,
@@ -14,6 +14,7 @@ from app.schemas import (
     AppSettingsOut,
     AppSettingsUpdate,
     ModelAdmin,
+    ModelPolicy,
     ModelUpdate,
     UserOut,
 )
@@ -115,7 +116,9 @@ async def update_app_settings(body: AppSettingsUpdate, _: AdminUser, session: Se
 
 
 # ------------------------------------------------------------------ models
-def _model_admin(m: LLMModel, default_id: int | None, loaded_id: int | None) -> ModelAdmin:
+def _model_admin(
+    m: LLMModel, default_id: int | None, loaded_id: int | None, free_for_load_mb: int | None = None
+) -> ModelAdmin:
     s = get_settings()
     out = ModelAdmin.model_validate(m)
     out.is_default = m.id == default_id
@@ -129,17 +132,48 @@ def _model_admin(m: LLMModel, default_id: int | None, loaded_id: int | None) -> 
         )
     if out.est_ram_mb > s.max_model_ram_mb and m.status == "ok":
         warnings.append(f"Estimated ~{out.est_ram_mb} MB RAM, close to/above the {s.max_model_ram_mb} MB limit.")
+    if free_for_load_mb is not None and m.id != loaded_id and m.status == "ok" \
+            and out.est_ram_mb + s.min_free_ram_mb > free_for_load_mb:
+        warnings.append(
+            f"Needs ~{out.est_ram_mb} MB (+{s.min_free_ram_mb} MB headroom) but only ~{free_for_load_mb} MB "
+            "would be free: it may not fit with the current free memory."
+        )
     if m.family == "chatml" and not any(x in m.filename.lower() for x in ("qwen", "chatml", "smol")):
         warnings.append("Template family was guessed (ChatML). Check it matches the model.")
     out.warnings = warnings
     return out
 
 
+def _free_for_load_mb(rows: list[LLMModel], loaded_id: int | None) -> int | None:
+    """RAM that would be available for a new model: MemAvailable plus what the resident
+    model frees when it is unloaded first. None when /proc/meminfo is not readable."""
+    avail = _meminfo_available_mb()
+    if avail is None:
+        return None
+    loaded = next((r for r in rows if r.id == loaded_id), None)
+    if loaded:
+        avail += loaded.measured_ram_mb or estimate_ram_mb(loaded)
+    return avail
+
+
+@router.get("/model-policy", response_model=ModelPolicy)
+async def model_policy(_: AdminUser):
+    s = get_settings()
+    return ModelPolicy(
+        max_param_b=s.max_param_hint_b,
+        max_file_gb=s.max_model_file_gb,
+        max_ram_mb=s.max_model_ram_mb,
+        min_free_ram_mb=s.min_free_ram_mb,
+    )
+
+
 @router.get("/models", response_model=list[ModelAdmin])
 async def admin_list_models(_: AdminUser, session: SessionDep, worker: WorkerDep):
     st = await session.get(AppSettings, 1)
-    rows = (await session.execute(select(LLMModel).order_by(LLMModel.sort_order, LLMModel.display_name))).scalars()
-    return [_model_admin(m, st.default_model_id if st else None, worker.loaded_model_id) for m in rows]
+    rows = list((await session.execute(select(LLMModel).order_by(LLMModel.sort_order, LLMModel.display_name))).scalars())
+    loaded_id = worker.loaded_model_id
+    free = _free_for_load_mb(rows, loaded_id)
+    return [_model_admin(m, st.default_model_id if st else None, loaded_id, free) for m in rows]
 
 
 @router.post("/models/rescan")

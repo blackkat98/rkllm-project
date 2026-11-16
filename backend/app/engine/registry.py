@@ -1,11 +1,13 @@
 """Hybrid model registry: the folder decides what exists, the DB decides what users see.
 
 Scanning upserts one LLMModel row per *.rkllm file under MODELS_DIR. New rows start
-disabled. The <=2B policy is enforced with measurable proxies because the .rkllm format
+disabled. The <=4B policy is enforced with measurable proxies because the .rkllm format
 cannot report its parameter count:
   1. file size cap (MAX_MODEL_FILE_GB)        -> status "too_large", cannot be enabled
   2. parameter hint parsed from the filename  -> shown to admins, warning only
   3. RAM measured on first load (worker hook) -> status "over_ram", auto-disabled
+The worker also refuses a load when free RAM is below the estimate + MIN_FREE_RAM_MB
+(temporary, the model stays enabled).
 """
 
 import logging
@@ -145,10 +147,20 @@ def to_spec(row: LLMModel, settings: Settings) -> ModelSpec:
         max_new_tokens=row.max_new_tokens,
         sampling=dict(row.sampling or {}),
         keep_loaded=row.keep_loaded,
+        est_ram_mb=estimate_ram_mb(row),
     )
 
 
+def estimate_ram_mb_from(file_size: int, param_hint_b: float | None, max_context_len: int) -> int:
+    """Rough RAM need before loading: weights ≈ file size, plus KV cache and runtime overhead.
+
+    The KV cache grows with model size: ~0.06 MB/token at 1.5B, ~0.16 MB/token at 4B (fp16 K+V).
+    Without a filename hint, w8a8 files are ~1.15 GB per billion parameters.
+    """
+    params_b = param_hint_b or file_size / 1.15e9
+    kv = max_context_len * max(0.03, 0.04 * params_b)
+    return int(file_size / 1024**2 * 1.08 + kv + 150)
+
+
 def estimate_ram_mb(row: LLMModel) -> int:
-    """Rough RAM need before loading: weights ≈ file size, plus runtime/KV overhead."""
-    kv = row.max_context_len * 0.08  # ~0.08 MB/token for 1-2B models at w8a8
-    return int(row.file_size / 1024**2 * 1.08 + kv + 150)
+    return estimate_ram_mb_from(row.file_size, row.param_hint_b, row.max_context_len)

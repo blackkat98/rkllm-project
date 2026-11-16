@@ -8,6 +8,7 @@ MODELS.mkdir()
 # small fake model files; the size cap is lowered so "too large" can be tested cheaply
 (MODELS / "qwen2.5-1.5b-instruct-rk3588-w8a8.rkllm").write_bytes(b"\0" * 2048)
 (MODELS / "gemma-3-1b-it-rk3588-w8a8-opt-1-hybrid-ratio-0.0.rkllm").write_bytes(b"\0" * 1024)
+(MODELS / "qwen3-4b-rk3588-w8a8.rkllm").write_bytes(b"\0" * 4096)
 with open(MODELS / "llama-3.1-8b-instruct-rk3588-w8a8.rkllm", "wb") as f:
     f.truncate(3 * 1024 * 1024)  # 3 MB > 0.002 GB cap
 

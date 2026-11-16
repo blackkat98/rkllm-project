@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import type { EngineStatus, ModelAdmin } from '~/types/api'
+import type { EngineStatus, ModelAdmin, ModelPolicy } from '~/types/api'
 
 const toast = useToast()
 const publicModels = useModelsStore()
 const items = ref<ModelAdmin[]>([])
 const engine = ref<EngineStatus | null>(null)
+const policy = ref<ModelPolicy | null>(null)
 const loading = ref(true)
 const scanning = ref(false)
 
 async function load() {
-  const [m, e] = await Promise.all([
+  const [m, e, p] = await Promise.all([
     api<ModelAdmin[]>('/api/admin/models'),
-    api<EngineStatus>('/api/engine/status')
+    api<EngineStatus>('/api/engine/status'),
+    policy.value ? Promise.resolve(policy.value) : api<ModelPolicy>('/api/admin/model-policy')
   ])
   items.value = m
   engine.value = e
+  policy.value = p
   loading.value = false
 }
 
@@ -155,7 +158,7 @@ onMounted(load)
     </div>
 
     <p class="text-xs text-(--ui-text-muted)">
-      Copy <code>.rkllm</code> files (RK3588, runtime 1.2.0, ≤2B parameters) into the models folder, then rescan.
+      Copy <code>.rkllm</code> files (RK3588, runtime 1.2.0<template v-if="policy">, ≤{{ policy.max_param_b }}B parameters, files ≤{{ policy.max_file_gb }} GB</template>) into the models folder, then rescan.
       New models start disabled. Sampling settings are applied when a model loads.
     </p>
 

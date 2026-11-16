@@ -7,8 +7,9 @@ You can point it somewhere else with `MODELS_DIR` in `deploy/.env`, e.g. an NVMe
 After you copy files in, open **Admin → Models → Rescan**. New models show up disabled
 until an admin enables them.
 
-* Size policy: files over `MAX_MODEL_FILE_GB` (2.8 GB by default, about 2B parameters at w8a8)
-  are marked `too_large` and can't be enabled.
+* Size policy: files over `MAX_MODEL_FILE_GB` (5.5 GB by default, about 4B parameters at w8a8)
+  are marked `too_large` and can't be enabled. A model also won't load while free RAM is below
+  its estimate plus 512 MB of headroom.
 * Optional `models.yaml` (see `deploy/models.example.yaml`) sets the display name,
   template family, context length and sampling on the first scan.
 * Optional `<model-name>.tokenizer.json` next to a model gives exact token counts for

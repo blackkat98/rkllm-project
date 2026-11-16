@@ -36,10 +36,12 @@ class Settings(BaseSettings):
     idle_unload_minutes: int = 0  # 0 = never unload an idle model
     kv_fast_path: bool = True  # tier-3 memory: reuse the NPU KV cache for the "hot" chat
 
-    # --- <=2B parameter policy (see README) ---
-    max_model_file_gb: float = 2.8
-    max_model_ram_mb: int = 3000
-    max_param_hint_b: float = 2.0
+    # --- <=4B parameter policy (see README) ---
+    max_model_file_gb: float = 5.5  # 4B w8a8 files are ~3.6-5.3 GB (large vocabularies at the top)
+    max_model_ram_mb: int = 6000
+    max_param_hint_b: float = 4.0
+    # refuse to load when MemAvailable < estimated model RAM + this headroom (8 GB board)
+    min_free_ram_mb: int = 512
 
     # --- memory (tier 2) ---
     summary_trigger_ratio: float = 0.70  # summarise when prompt > 70% of context

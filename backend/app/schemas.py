@@ -104,6 +104,13 @@ class ModelAdmin(ORM):
     warnings: list[str] = []
 
 
+class ModelPolicy(BaseModel):
+    max_param_b: float
+    max_file_gb: float
+    max_ram_mb: int
+    min_free_ram_mb: int
+
+
 class Sampling(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
     top_p: float | None = Field(default=None, gt=0, le=1)

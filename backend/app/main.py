@@ -82,6 +82,7 @@ def create_app(settings: Settings | None = None, backend: Backend | None = None)
             cpu_mask=settings.rkllm_cpu_mask,
             cpu_num=settings.rkllm_cpu_num,
             max_model_ram_mb=settings.max_model_ram_mb,
+            min_free_ram_mb=settings.min_free_ram_mb,
             idle_unload_minutes=settings.idle_unload_minutes,
             kv_fast_path=settings.kv_fast_path,
         )
