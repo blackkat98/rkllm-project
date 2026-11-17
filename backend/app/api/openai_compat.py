@@ -56,7 +56,8 @@ async def v1_models(user: ApiKeyUser, session: SessionDep):
 async def chat_completions(body: ChatCompletionIn, user: ApiKeyUser, session: SessionDep, worker: WorkerDep):
     settings = get_settings()
     model = None
-    if body.model:
+    # only admins' keys choose the model; other keys always use the instance default
+    if body.model and user.role == "admin":
         model = (await session.execute(
             select(LLMModel).where(or_(LLMModel.filename == body.model, LLMModel.display_name == body.model))
         )).scalar_one_or_none()

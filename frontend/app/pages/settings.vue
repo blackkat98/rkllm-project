@@ -111,7 +111,7 @@ onMounted(() => {
               @update:model-value="(v) => (colorMode.preference = String(v))"
             />
           </UFormField>
-          <UFormField label="Default model for new chats" description="You can still switch models in any chat.">
+          <UFormField v-if="auth.isAdmin" label="Default model for new chats" description="You can still switch models in any chat.">
             <USelect v-model="defaultModel" :items="modelItems" class="w-72" />
           </UFormField>
         </div>

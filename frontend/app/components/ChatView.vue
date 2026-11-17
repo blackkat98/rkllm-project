@@ -28,13 +28,17 @@ watch(() => props.id, async (id) => {
 }, { immediate: true })
 
 // ---------- model selection ----------
-// inside a conversation: its model (can be switched for the next message); new chat: picker state
+// admins: inside a conversation its model (can be switched for the next message), new chat: picker
+// state. Everyone else always uses the instance default chosen in Admin.
 const convModel = ref<number | null>(null)
 watch(() => chat.conversation?.model_id, (v) => { convModel.value = v ?? null }, { immediate: true })
 const selectedModel = computed<number | null>({
-  get: () => (props.id ? (convModel.value ?? models.defaultModel?.id ?? null) : models.newChatModelId),
+  get: () => {
+    if (!auth.isAdmin) return models.defaultModel?.id ?? null
+    return props.id ? (convModel.value ?? models.defaultModel?.id ?? null) : models.newChatModelId
+  },
   set: (v) => {
-    if (!v) return
+    if (!v || !auth.isAdmin) return
     if (props.id) convModel.value = v
     else models.setNewChatModel(v)
   }

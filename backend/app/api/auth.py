@@ -136,7 +136,10 @@ async def update_me(body: MeUpdate, user: CurrentUser, session: SessionDep):
     if "custom_instructions" in data:
         user.custom_instructions = data["custom_instructions"] or None
     if data.get("settings") is not None:
-        user.settings = {**(user.settings or {}), **data["settings"]}
+        incoming = dict(data["settings"])
+        if user.role != "admin":
+            incoming.pop("default_model_id", None)  # only admins choose models
+        user.settings = {**(user.settings or {}), **incoming}
     await session.commit()
     return user
 

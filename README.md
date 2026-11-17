@@ -26,14 +26,16 @@ browser ──► web (Caddy: Nuxt SPA + reverse proxy) ──► backend (FastA
   The first admin is created from `.env`. Admins create accounts; open sign-up can be switched on.
 - **Chats are saved**: sidebar grouped Today / Yesterday / 7 days / 30 days, search (titles and messages),
   pin, rename, archive, delete, and auto-generated titles.
-- **Choose a model per chat** in the composer. It shows which model is already on the NPU and which needs
-  loading. You can switch models mid-chat.
+- **Admins choose the model.** Admins pick a model per chat in the composer (it shows which model is
+  already on the NPU and which needs loading) and can switch mid-chat. Everyone else always uses the
+  instance default set in **Admin**, so the single NPU isn't reloading models between users. The server
+  enforces this for chats and API keys alike.
 - **Streaming**, with live status: *waiting for NPU (2 ahead)*, *loading model*, *condensing memory*.
   Stop button. Regenerate. Edit a message and resend.
 - Replies keep generating if you close the tab, and a reloaded page reattaches to the stream.
 - Markdown with syntax-highlighted code and copy buttons. Reasoning models (DeepSeek-R1, Qwen3) show a
   collapsible *Thought process* block.
-- Settings: theme, custom instructions, default model, password, API keys.
+- Settings: theme, custom instructions, default model (admins only), password, API keys.
 - Admin: models, users, instance settings (global system prompt, sign-up, auto titles).
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/models`) with per-user API keys, the same
   endpoints `rkllm_api_bundle/server.py` offered. Requests share the NPU queue with chats.
