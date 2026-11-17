@@ -41,14 +41,23 @@ def _out(conv: Conversation) -> ConversationOut:
 
 
 async def resolve_model(session, user: User, requested: int | None, conv: Conversation | None) -> LLMModel:
-    """requested -> conversation's model -> user's default -> instance default -> first enabled."""
+    """Admins: requested -> conversation's model -> own default -> instance default -> first enabled.
+
+    Only admins choose models. Everyone else always gets the instance default (set in Admin), so
+    the single NPU isn't swapping models between users. Their requested model is ignored, not
+    rejected, so an outdated client keeps working.
+    """
     st = await session.get(AppSettings, 1)
-    candidates = [
-        requested,
-        conv.model_id if conv else None,
-        (user.settings or {}).get("default_model_id"),
-        st.default_model_id if st else None,
-    ]
+    instance_default = st.default_model_id if st else None
+    if user.role == "admin":
+        candidates = [
+            requested,
+            conv.model_id if conv else None,
+            (user.settings or {}).get("default_model_id"),
+            instance_default,
+        ]
+    else:
+        candidates = [None, instance_default]
     for i, mid in enumerate(candidates):
         if mid is None:
             continue
@@ -114,8 +123,11 @@ async def get_conversation(conversation_id: uuid.UUID, user: CurrentUser, sessio
 async def update_conversation(conversation_id: uuid.UUID, body: ConversationUpdate, user: CurrentUser, session: SessionDep):
     conv = await _owned(session, conversation_id, user)
     data = body.model_dump(exclude_unset=True)
-    if "model_id" in data and data["model_id"] is not None:
-        await resolve_model(session, user, data["model_id"], None)
+    if "model_id" in data:
+        if user.role != "admin":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can change the model")
+        if data["model_id"] is not None:
+            await resolve_model(session, user, data["model_id"], None)
     if "title" in data:
         conv.title_generated = True  # user-chosen title: never overwrite
     for k, v in data.items():

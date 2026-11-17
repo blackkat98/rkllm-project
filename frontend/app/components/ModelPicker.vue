@@ -26,7 +26,14 @@ const items = computed<DropdownMenuItem[][]>(() => [
 </script>
 
 <template>
-  <UDropdownMenu v-if="models.models.length" :items="items" :content="{ align: 'start', side: 'top' }" :ui="{ content: 'w-72', itemDescription: 'text-xs' }" :disabled="disabled">
+  <!-- non-admins see the model but can't change it: the admin picks the instance default -->
+  <UTooltip v-if="models.models.length && !auth.isAdmin" text="The model is chosen by your administrator">
+    <span class="inline-flex items-center gap-2 px-2.5 py-1 text-sm text-(--ui-text-muted) max-w-56">
+      <span class="size-2 rounded-full shrink-0" :class="current?.loaded ? 'bg-(--ui-success)' : 'bg-(--ui-border-accented)'" />
+      <span class="truncate">{{ current?.display_name ?? 'No model available' }}</span>
+    </span>
+  </UTooltip>
+  <UDropdownMenu v-else-if="models.models.length" :items="items" :content="{ align: 'start', side: 'top' }" :ui="{ content: 'w-72', itemDescription: 'text-xs' }" :disabled="disabled">
     <UButton
       color="neutral"
       variant="ghost"

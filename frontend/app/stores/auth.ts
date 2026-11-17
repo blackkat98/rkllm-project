@@ -52,6 +52,7 @@ export const useAuthStore = defineStore('auth', {
       } catch { /* ignore */ }
       this.clear()
       useConversationsStore().$reset()
+      useModelsStore().$reset()
       useChatStore().reset()
       await navigateTo('/login')
     },

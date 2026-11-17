@@ -13,9 +13,10 @@ export const useModelsStore = defineStore('models', {
   }),
   getters: {
     byId: s => (id: number | null | undefined) => s.models.find(m => m.id === id) ?? null,
+    /** admins: their own default first. Everyone else always gets the instance default. */
     defaultModel(s): ModelPublic | null {
       const auth = useAuthStore()
-      const userDefault = auth.user?.settings?.default_model_id
+      const userDefault = auth.isAdmin ? auth.user?.settings?.default_model_id : undefined
       return s.models.find(m => m.id === userDefault)
         ?? s.models.find(m => m.is_default)
         ?? s.models[0]
@@ -26,6 +27,11 @@ export const useModelsStore = defineStore('models', {
     async fetch() {
       this.models = await api<ModelPublic[]>('/api/models')
       this.loaded = true
+      // only admins choose models; the server ignores anyone else's choice anyway
+      if (!useAuthStore().isAdmin) {
+        this.newChatModelId = this.defaultModel?.id ?? null
+        return
+      }
       if (this.newChatModelId === null && import.meta.client) {
         const saved = Number(localStorage.getItem(STORAGE_KEY))
         if (saved && this.models.some(m => m.id === saved)) this.newChatModelId = saved
